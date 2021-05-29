@@ -151,15 +151,22 @@ done
 accept_tos
 
 # Then retrieve the index page
-url=$(curl -L -b "$COOKIE_FILE" --silent "$GURL" | \
-      grep -i "<a href=.*$DEV_ALIAS-$BUILDID-" | cut -d '"' -f2)
-if [ "$url" == "" ]; then
-  echo "[-] Image URL not found"
-  abort 1
-fi
+echo export COOKIE_FILE=$COOKIE_FILE
+echo export GURL=$GURL
+echo export DEV_ALIAS=$DEV_ALIAS
+echo export BUILDID=$BUILDID
+
+# url=$(curl -L -b "$COOKIE_FILE" --silent "$GURL" | \
+#       grep -i "<a href=.*$DEV_ALIAS-$BUILDID-" | cut -d '"' -f2)
+# if [ "$url" == "" ]; then
+#   echo "[-] Image URL not found"
+#   abort 1
+# fi
 
 echo "[*] Downloading image from '$url'"
 outFile=$OUTPUT_DIR/$(basename "$url")
-wget --continue -O "$outFile" "$url"
+echo $outFile
+# wget --continue -O "$outFile" "$url"
+abort 1
 
 abort 0

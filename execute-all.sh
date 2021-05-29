@@ -203,7 +203,7 @@ check_input_args() {
     echo "[-] Invalid output directory"
     usage
   fi
-  if [[ "$INPUT_IMG" != "" && ! -f "$INPUT_IMG" ]]; then
+  if [[ "$INPUT_IMG" != "" && ! -d "$INPUT_IMG" ]]; then
     echo "[-] Invalid '$INPUT_IMG' file"
     abort 1
   fi
@@ -479,66 +479,94 @@ FACTORY_IMGS_R_DATA="$OUT_BASE/factory_imgs_repaired_data"
 echo "[*] Setting output base to '$OUT_BASE'"
 
 # Download images if not provided
-factoryImgArchive=""
-if [[ "$INPUT_IMG" == "" ]]; then
+# factoryImgArchive=""
+# if [[ "$INPUT_IMG" == "" ]]; then
 
-  # Factory image alias for devices with naming incompatibilities with AOSP
-  if [[ "$DEVICE" == "flounder" && "$DEV_ALIAS" == "" ]]; then
-    echo "[-] Building for flounder requires setting the device alias option - 'volantis' or 'volantisg'"
+#   # Factory image alias for devices with naming incompatibilities with AOSP
+#   if [[ "$DEVICE" == "flounder" && "$DEV_ALIAS" == "" ]]; then
+#     echo "[-] Building for flounder requires setting the device alias option - 'volantis' or 'volantisg'"
+#     abort 1
+#   fi
+#   if [[ "$DEV_ALIAS" == "" ]]; then
+#     DEV_ALIAS="$DEVICE"
+#   fi
+
+#   __extraArgs=""
+#   if [ $AUTO_TOS_ACCEPT = true ]; then
+#     __extraArgs="--yes"
+#   fi
+
+#  $DOWNLOAD_SCRIPT --device "$DEVICE" --alias "$DEV_ALIAS" \
+#        --buildID "$BUILDID" --output "$OUT_BASE" $__extraArgs || {
+#     echo "[-] Images download failed"
+#     abort 1
+#   }
+#   factoryImgArchive="$(find "$OUT_BASE" -iname "*$DEV_ALIAS*$BUILDID*.tgz" -or \
+#                        -iname "*$DEV_ALIAS*$BUILDID*.zip" | head -1)"
+# else
+#   factoryImgArchive="$INPUT_IMG"
+# fi
+
+# if [[ "$factoryImgArchive" == "" ]]; then
+#   echo "[-] Failed to locate factory image archive"
+#   abort 1
+# fi
+
+# # Clear old data if present & extract data from factory images
+# if [ -d "$FACTORY_IMGS_DATA" ]; then
+#   # Previous run might have been with --keep which keeps the mount-points. Check
+#   # if mounted & unmount if so.
+#   if mount | grep -q "$FACTORY_IMGS_DATA/system"; then
+#     unmount_raw_image "$FACTORY_IMGS_DATA/system"
+#   fi
+#   if mount | grep -q "$FACTORY_IMGS_DATA/vendor"; then
+#     unmount_raw_image "$FACTORY_IMGS_DATA/vendor"
+#   fi
+#   rm -rf "${FACTORY_IMGS_DATA:?}"/*
+# else
+#   mkdir -p "$FACTORY_IMGS_DATA"
+# fi
+
+# EXTRACT_SCRIPT_ARGS=(--input "$factoryImgArchive" --output "$FACTORY_IMGS_DATA")
+
+# if [ "$USE_DEBUGFS" = true ]; then
+#   EXTRACT_SCRIPT_ARGS+=( --debugfs)
+# elif [ "$USE_FUSEEXT2" = true ]; then
+#   EXTRACT_SCRIPT_ARGS+=( --fuse-ext2)
+# fi
+
+# $EXTRACT_SCRIPT "${EXTRACT_SCRIPT_ARGS[@]}" --conf-file "$CONFIG_FILE" || {
+#   echo "[-] Factory images data extract failed"
+#   abort 1
+# }
+
+# FACTORY_IMGS_DATA=/tmp/tmp-images
+
+extract_vendor_partition_size() {
+  local vendor_img_raw="$1"
+  local out_file="$2/vendor_partition_size"
+  local size=""
+
+  size="$((du -b "$vendor_img_raw" || stat -f %z "$vendor_img_raw" || echo "") 2>/dev/null | tr '\t' ' ' | cut -d' ' -f1)"
+  if [[ "$size" == "" ]]; then
+    echo "[!] Failed to extract vendor partition size from '$vendor_img_raw'"
     abort 1
   fi
-  if [[ "$DEV_ALIAS" == "" ]]; then
-    DEV_ALIAS="$DEVICE"
-  fi
 
-  __extraArgs=""
-  if [ $AUTO_TOS_ACCEPT = true ]; then
-    __extraArgs="--yes"
-  fi
-
- $DOWNLOAD_SCRIPT --device "$DEVICE" --alias "$DEV_ALIAS" \
-       --buildID "$BUILDID" --output "$OUT_BASE" $__extraArgs || {
-    echo "[-] Images download failed"
-    abort 1
-  }
-  factoryImgArchive="$(find "$OUT_BASE" -iname "*$DEV_ALIAS*$BUILDID*.tgz" -or \
-                       -iname "*$DEV_ALIAS*$BUILDID*.zip" | head -1)"
-else
-  factoryImgArchive="$INPUT_IMG"
-fi
-
-if [[ "$factoryImgArchive" == "" ]]; then
-  echo "[-] Failed to locate factory image archive"
-  abort 1
-fi
-
-# Clear old data if present & extract data from factory images
-if [ -d "$FACTORY_IMGS_DATA" ]; then
-  # Previous run might have been with --keep which keeps the mount-points. Check
-  # if mounted & unmount if so.
-  if mount | grep -q "$FACTORY_IMGS_DATA/system"; then
-    unmount_raw_image "$FACTORY_IMGS_DATA/system"
-  fi
-  if mount | grep -q "$FACTORY_IMGS_DATA/vendor"; then
-    unmount_raw_image "$FACTORY_IMGS_DATA/vendor"
-  fi
-  rm -rf "${FACTORY_IMGS_DATA:?}"/*
-else
-  mkdir -p "$FACTORY_IMGS_DATA"
-fi
-
-EXTRACT_SCRIPT_ARGS=(--input "$factoryImgArchive" --output "$FACTORY_IMGS_DATA")
-
-if [ "$USE_DEBUGFS" = true ]; then
-  EXTRACT_SCRIPT_ARGS+=( --debugfs)
-elif [ "$USE_FUSEEXT2" = true ]; then
-  EXTRACT_SCRIPT_ARGS+=( --fuse-ext2)
-fi
-
-$EXTRACT_SCRIPT "${EXTRACT_SCRIPT_ARGS[@]}" --conf-file "$CONFIG_FILE" || {
-  echo "[-] Factory images data extract failed"
-  abort 1
+  # Write to file so that 'generate-vendor.sh' can pick the value
+  # for BoardConfigVendor makefile generation
+  echo "$size" > "$out_file"
 }
+
+mkdir -p $FACTORY_IMGS_DATA/radio/radio.img
+mkdir -p $FACTORY_IMGS_DATA/radio/bootloader.img
+cp -a $INPUT_IMG/radio* $FACTORY_IMGS_DATA/radio/radio.img
+cp -a $INPUT_IMG/bootloader* $FACTORY_IMGS_DATA/radio/bootloader.img
+mkdir -p $FACTORY_IMGS_DATA/system
+mkdir -p $FACTORY_IMGS_DATA/vendor
+mount $INPUT_IMG/system.img $FACTORY_IMGS_DATA/system
+mount $INPUT_IMG/vendor.img $FACTORY_IMGS_DATA/vendor
+extract_vendor_partition_size $INPUT_IMG/vendor.img $FACTORY_IMGS_DATA
 
 # system.img contents are different between Nexus & Pixel
 SYSTEM_ROOT="$FACTORY_IMGS_DATA/system"
